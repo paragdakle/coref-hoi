@@ -342,6 +342,8 @@ class CorefModel(nn.Module):
                 logger.info('spans/gold: %d/%d; ratio: %.2f' % (num_top_spans, (top_span_cluster_ids > 0).sum(), (top_span_cluster_ids > 0).sum()/num_top_spans))
                 if conf['mention_loss_coef']:
                     logger.info('mention loss: %.4f' % loss_mention)
+                if self.use_span_classification:
+                    logger.info('span classification loss: %.4f' % span_classification_loss)
                 if conf['loss_type'] == 'marginalized':
                     logger.info('norm/gold: %.4f/%.4f' % (torch.sum(log_norm), torch.sum(log_marginalized_antecedent_scores)))
                 else:
