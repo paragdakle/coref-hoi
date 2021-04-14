@@ -288,7 +288,10 @@ class Runner:
 
 if __name__ == '__main__':
     config_name, gpu_id = sys.argv[1], int(sys.argv[2])
+    saved_suffix=None
+    if len(sys.argv) == 4:
+        saved_suffix = sys.argv[3]
     runner = Runner(config_name, gpu_id)
-    model = runner.initialize_model()
+    model = runner.initialize_model(saved_suffix=saved_suffix)
 
     runner.train(model)
