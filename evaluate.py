@@ -2,8 +2,8 @@ from run import Runner
 import sys
 
 
-def evaluate(config_name, gpu_id, saved_suffix):
-    runner = Runner(config_name, gpu_id)
+def evaluate(config_name, gpu_id, saved_suffix, config_dir):
+    runner = Runner(config_name, gpu_id, config_dir=config_dir)
     model = runner.initialize_model(saved_suffix)
 
     examples_train, examples_dev, examples_test = runner.data.get_tensor_examples()
@@ -16,4 +16,7 @@ def evaluate(config_name, gpu_id, saved_suffix):
 
 if __name__ == '__main__':
     config_name, saved_suffix, gpu_id = sys.argv[1], sys.argv[2], int(sys.argv[3])
-    evaluate(config_name, gpu_id, saved_suffix)
+    config_dir="./"
+    if len(sys.argv) == 5:
+        config_dir = sys.argv[4]
+    evaluate(config_name, gpu_id, saved_suffix, config_dir)
