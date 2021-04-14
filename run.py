@@ -23,14 +23,14 @@ logger = logging.getLogger()
 
 
 class Runner:
-    def __init__(self, config_name, gpu_id=0, seed=None):
+    def __init__(self, config_name, gpu_id=0, seed=None, config_dir="./"):
         self.name = config_name
         self.name_suffix = datetime.now().strftime('%b%d_%H-%M-%S')
         self.gpu_id = gpu_id
         self.seed = seed
 
         # Set up config
-        self.config = util.initialize_config(config_name)
+        self.config = util.initialize_config(config_name, config_dir)
 
         # Set up logger
         log_path = join(self.config['log_dir'], 'log_' + self.name_suffix + '.txt')
@@ -287,11 +287,11 @@ class Runner:
 
 
 if __name__ == '__main__':
-    config_name, gpu_id = sys.argv[1], int(sys.argv[2])
+    config_name, gpu_id, config_dir = sys.argv[1], int(sys.argv[2]), sys.argv[3]
     saved_suffix=None
-    if len(sys.argv) == 4:
-        saved_suffix = sys.argv[3]
-    runner = Runner(config_name, gpu_id)
+    if len(sys.argv) == 5:
+        saved_suffix = sys.argv[4]
+    runner = Runner(config_name, gpu_id, config_dir=config_dir)
     model = runner.initialize_model(saved_suffix=saved_suffix)
 
     runner.train(model)
