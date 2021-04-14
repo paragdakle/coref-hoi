@@ -169,7 +169,7 @@ class CorefModel(nn.Module):
         # Get span score
         if self.use_span_classification:
           mention_class = self.span_emb_classification_ffnn(candidate_span_emb)
-          is_mention_class_scores = torch.gather(mention_class, 1, torch.tensor([[1]]).repeat(mention_class.shape[0], 1))
+          is_mention_class_scores = torch.gather(mention_class, 1, torch.tensor([[1]], device=device).repeat(mention_class.shape[0], 1))
           candidate_mention_scores = torch.nn.functional.softmax(torch.squeeze(mention_class, dim=-1), dim=0)
           mention_class_predictions = torch.argmax(mention_class, dim=1)
           selected_idx = torch.squeeze((mention_class_predictions == 1).nonzero(as_tuple=False), -1)
