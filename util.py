@@ -19,10 +19,10 @@ def get_tokenizer(bert_tokenizer_name):
     return BertTokenizer.from_pretrained(bert_tokenizer_name)
 
 
-def initialize_config(config_name):
+def initialize_config(config_name, config_dir="./"):
     logger.info("Running experiment: {}".format(config_name))
 
-    config = pyhocon.ConfigFactory.parse_file("experiments.conf")[config_name]
+    config = pyhocon.ConfigFactory.parse_file(join(config_dir, "experiments.conf"))[config_name]
     config['log_dir'] = join(config["log_root"], config_name)
     makedirs(config['log_dir'], exist_ok=True)
 
