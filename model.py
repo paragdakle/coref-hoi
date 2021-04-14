@@ -21,6 +21,7 @@ class CorefModel(nn.Module):
         self.config = config
         self.device = device
 
+        self.use_span_classification = True
         self.num_genres = num_genres if num_genres else len(config['genres'])
         self.max_seg_len = config['max_segment_len']
         self.max_span_width = config['max_span_width']
@@ -55,6 +56,7 @@ class CorefModel(nn.Module):
 
         self.mention_token_attn = self.make_ffnn(self.bert_emb_size, 0, output_size=1) if config['model_heads'] else None
         self.span_emb_score_ffnn = self.make_ffnn(self.span_emb_size, [config['ffnn_size']] * config['ffnn_depth'], output_size=1)
+        self.span_emb_classification_ffnn = self.make_ffnn(self.span_emb_size, [config['ffnn_size']] * config['ffnn_depth'], output_size=2)
         self.span_width_score_ffnn = self.make_ffnn(config['feature_emb_size'], [config['ffnn_size']] * config['ffnn_depth'], output_size=1) if config['use_width_prior'] else None
         self.coarse_bilinear = self.make_ffnn(self.span_emb_size, 0, output_size=self.span_emb_size)
         self.antecedent_distance_score_ffnn = self.make_ffnn(config['feature_emb_size'], 0, output_size=1) if config['use_distance_prior'] else None
@@ -66,6 +68,7 @@ class CorefModel(nn.Module):
 
         self.update_steps = 0  # Internal use for debug
         self.debug = True
+        self.scl = nn.CrossEntropyLoss()
 
     def make_embedding(self, dict_size, std=0.02):
         emb = nn.Embedding(dict_size, self.config['feature_emb_size'])
@@ -164,19 +167,27 @@ class CorefModel(nn.Module):
         candidate_span_emb = torch.cat(candidate_emb_list, dim=1)  # [num candidates, new emb size]
 
         # Get span score
-        candidate_mention_scores = torch.squeeze(self.span_emb_score_ffnn(candidate_span_emb), 1)
-        if conf['use_width_prior']:
-            width_score = torch.squeeze(self.span_width_score_ffnn(self.emb_span_width_prior.weight), 1)
-            candidate_width_score = width_score[candidate_width_idx]
-            candidate_mention_scores += candidate_width_score
+        if self.use_span_classification:
+          mention_class = self.span_emb_classification_ffnn(candidate_span_emb)
+          is_mention_class_scores = torch.gather(mention_class, 1, torch.tensor([[1]]).repeat(mention_class.shape[0], 1))
+          candidate_mention_scores = torch.nn.functional.softmax(torch.squeeze(mention_class, dim=-1), dim=0)
+          mention_class_predictions = torch.argmax(mention_class, dim=1)
+          selected_idx = torch.squeeze((mention_class_predictions == 1).nonzero(as_tuple=False), -1)
+          num_top_spans = len(selected_idx)
+        else:
+          candidate_mention_scores = torch.squeeze(self.span_emb_score_ffnn(candidate_span_emb), 1)
+          if conf['use_width_prior']:
+              width_score = torch.squeeze(self.span_width_score_ffnn(self.emb_span_width_prior.weight), 1)
+              candidate_width_score = width_score[candidate_width_idx]
+              candidate_mention_scores += candidate_width_score
 
-        # Extract top spans
-        candidate_idx_sorted_by_score = torch.argsort(candidate_mention_scores, descending=True).tolist()
-        candidate_starts_cpu, candidate_ends_cpu = candidate_starts.tolist(), candidate_ends.tolist()
-        num_top_spans = int(min(conf['max_num_extracted_spans'], conf['top_span_ratio'] * num_words))
-        selected_idx_cpu = self._extract_top_spans(candidate_idx_sorted_by_score, candidate_starts_cpu, candidate_ends_cpu, num_top_spans)
-        assert len(selected_idx_cpu) == num_top_spans
-        selected_idx = torch.tensor(selected_idx_cpu, device=device)
+          # Extract top spans
+          candidate_idx_sorted_by_score = torch.argsort(candidate_mention_scores, descending=True).tolist()
+          candidate_starts_cpu, candidate_ends_cpu = candidate_starts.tolist(), candidate_ends.tolist()
+          num_top_spans = int(min(conf['max_num_extracted_spans'], conf['top_span_ratio'] * num_words))
+          selected_idx_cpu = self._extract_top_spans(candidate_idx_sorted_by_score, candidate_starts_cpu, candidate_ends_cpu, num_top_spans)
+          assert len(selected_idx_cpu) == num_top_spans
+          selected_idx = torch.tensor(selected_idx_cpu, device=device)
         top_span_starts, top_span_ends = candidate_starts[selected_idx], candidate_ends[selected_idx]
         top_span_emb = candidate_span_emb[selected_idx]
         top_span_cluster_ids = candidate_labels[selected_idx] if do_loss else None
@@ -305,6 +316,12 @@ class CorefModel(nn.Module):
             loss_mention = -torch.sum(torch.log(torch.sigmoid(gold_mention_scores))) * conf['mention_loss_coef']
             loss_mention += -torch.sum(torch.log(1 - torch.sigmoid(non_gold_mention_scores))) * conf['mention_loss_coef']
             loss += loss_mention
+
+        if self.use_span_classification:
+            if gold_starts is not None:
+                mention_labels = ((candidate_starts == gold_starts) == (candidate_ends == gold_ends)).int()
+                span_classification_loss = self.scl(mention_class, mention_labels)
+                loss += span_classification_loss
 
         if conf['higher_order'] == 'cluster_merging':
             top_pairwise_scores += cluster_merging_scores
