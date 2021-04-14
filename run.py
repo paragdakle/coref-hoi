@@ -93,6 +93,7 @@ class Runner:
         max_f1 = 0
         start_time = time.time()
         model.zero_grad()
+        early_stopping = conf["early_stopping"]
         for epo in range(epochs):
             random.shuffle(examples_train)  # Shuffle training set
             for doc_key, example in examples_train:
@@ -144,9 +145,13 @@ class Runner:
                         if f1 > max_f1:
                             max_f1 = f1
                             self.save_model_checkpoint(model, len(loss_history))
+                            early_stopping = conf["early_stopping"]
+                        else:
+                            early_stopping -= 1
                         logger.info('Eval max f1: %.2f' % max_f1)
                         start_time = time.time()
-
+            if early_stopping == 0:
+              break
         logger.info('**********Finished training**********')
         logger.info('Actual update steps: %d' % len(loss_history))
 
@@ -271,8 +276,6 @@ class Runner:
         # return LambdaLR(optimizer, [lr_lambda_bert, lr_lambda_bert, lr_lambda_task, lr_lambda_task])
 
     def save_model_checkpoint(self, model, step):
-        if step < 30000:
-            return  # Debug
         path_ckpt = join(self.config['log_dir'], f'model_{self.name_suffix}_{step}.bin')
         torch.save(model.state_dict(), path_ckpt)
         logger.info('Saved model to %s' % path_ckpt)
